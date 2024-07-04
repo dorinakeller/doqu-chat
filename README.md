@@ -70,7 +70,9 @@ GET /health
 
 ### Invoke Chat
 
-#### POST /invoke
+```http
+POST /invoke
+```
 
 This endpoint invokes the Azure OpenAI GPT to generate a response based on the provided prompt and message.
 
