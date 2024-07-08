@@ -1,12 +1,12 @@
 public class AppConfiguration
 {
-    public string ChatBaseUrl { get; }
+    public string BackendUrl { get; }
     public string ApiKey { get; }
 
     public AppConfiguration()
     {
         // Read and validate required environment variables
-        ChatBaseUrl = RequireEnvironmentVariable("CHAT_BASE_URL", "Base URL must be provided.");
+        BackendUrl = RequireEnvironmentVariable("BACKEND_URL", "Base URL must be provided.");
         ApiKey = RequireEnvironmentVariable("API_KEY", "API KEY must be provided.");
     }
 
