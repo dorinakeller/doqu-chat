@@ -99,6 +99,8 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
             }
         }
 
+        await client.StopAsync();
+
         // var response = await chatClient.CompleteChatAsync(messages, completionOptions);
         return "asd";
         // return response.Value.Content[0].Text;
