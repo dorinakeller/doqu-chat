@@ -27,11 +27,13 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
     private readonly float frequencyPenalty = frequencyPenalty;
     private readonly float presencePenalty = presencePenalty;
 
+
+
     public async Task<WebPubSubClient> EstablishWebSocket()
     {
         var serviceClient = new WebPubSubServiceClient(WebPubSubEndpoint, WebPubSubHub);
 
-        DateTimeOffset expiration = DateTimeOffset.UtcNow.AddMinutes(5);
+        DateTimeOffset expiration = DateTimeOffset.UtcNow.AddMinutes(500);
 
         var url = serviceClient.GetClientAccessUri(
             expiresAt: expiration,
@@ -40,6 +42,8 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
         ).AbsoluteUri;
 
         var wsClient = new WebPubSubClient(new Uri(url));
+        // Console.WriteLine(wsClient);
+        // Console.WriteLine(url);
         try
         {
             await wsClient.StartAsync();
@@ -49,6 +53,12 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
         catch (Exception ex)
         {
             Console.WriteLine($"Error establishing WebSocket connection: {ex.Message}");
+            // Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+            // if (ex.InnerException != null)
+            //     {
+            //         Console.WriteLine($"Inner Exception Message: {ex.InnerException.Message}");
+            //         Console.WriteLine($"Inner Exception Stack Trace: {ex.InnerException.StackTrace}");
+            //     }
             throw;
         }
 
