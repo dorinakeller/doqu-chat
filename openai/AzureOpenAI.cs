@@ -1,3 +1,4 @@
+
 using Azure;
 using Azure.AI.OpenAI;
 using Azure.Messaging.WebPubSub;
@@ -27,44 +28,43 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
     private readonly float frequencyPenalty = frequencyPenalty;
     private readonly float presencePenalty = presencePenalty;
 
-    public async Task<WebPubSubClient> EstablishWebSocket()
-    {
-        var serviceClient = new WebPubSubServiceClient(WebPubSubEndpoint, WebPubSubHub);
+    // public async Task<WebPubSubClient> EstablishWebSocket()
+    // {
+    //     var serviceClient = new WebPubSubServiceClient(WebPubSubEndpoint, WebPubSubHub);
 
-        DateTimeOffset expiration = DateTimeOffset.UtcNow.AddMinutes(5);
+    //     DateTimeOffset expiration = DateTimeOffset.UtcNow.AddMinutes(5);
 
-        var url = serviceClient.GetClientAccessUri(
-            expiresAt: expiration,
-            userId: "gpt_model",
-            roles: ["webpubsub.sendToGroup.chat", "webpubsub.joinLeaveGroup.chat"]
-        ).AbsoluteUri;
+    //     var url = serviceClient.GetClientAccessUri(
+    //         expiresAt: expiration,
+    //         userId: "gpt_model",
+    //         roles: ["webpubsub.sendToGroup.chat", "webpubsub.joinLeaveGroup.chat"]
+    //     ).AbsoluteUri;
 
-        var wsClient = new WebPubSubClient(new Uri(url));
-        try
-        {
-            await wsClient.StartAsync();
-            await wsClient.JoinGroupAsync("chat");
-            return wsClient;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error establishing WebSocket connection: {ex.Message}");
-            throw;
-        }
+    //     var wsClient = new WebPubSubClient(new Uri(url));
+    //     try
+    //     {
+    //         await wsClient.StartAsync();
+    //         await wsClient.JoinGroupAsync("chat");
+    //         return wsClient;
+    //     }
+    //     catch (Exception ex)
+    //     {
+    //         Console.WriteLine($"Error establishing WebSocket connection: {ex.Message}");
+    //         throw;
+    //     }
 
-    }
+    // }
 
-    public async Task<string> Chat(string messageId, string userMessage, string chat_group_id)
+    public async Task<string> Chat(string messageId, string userMessage, string chat_group_id, FetchContextResponse contextData)
     {
         AzureOpenAIClient azureClient = new(
-                    new Uri(Endpoint),
+                    new Uri(contextData.ChatModel.Endpoint),
                     new AzureKeyCredential(Key)
                 );
-        ChatClient chatClient = azureClient.GetChatClient(DeploymentName);
-
+        ChatClient chatClient = azureClient.GetChatClient(contextData.ChatModel.DeploymentName);
         var messages = new List<ChatMessage>
         {
-            new SystemChatMessage("You are a giving professional detailed answers!"),
+            new SystemChatMessage(contextData.SystemPrompt),
             new UserChatMessage(userMessage)
         };
 
@@ -75,35 +75,44 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
             FrequencyPenalty = frequencyPenalty,
             PresencePenalty = presencePenalty,
         };
-        AsyncResultCollection<StreamingChatCompletionUpdate> updates = chatClient.CompleteChatStreamingAsync(messages, completionOptions);
-        WebPubSubClient client = await EstablishWebSocket();
 
+        AsyncResultCollection<StreamingChatCompletionUpdate> updates = chatClient.CompleteChatStreamingAsync(messages, completionOptions);
+        string completeMessageContent = "";
         await foreach (StreamingChatCompletionUpdate update in updates)
         {
             foreach (ChatMessageContentPart updatePart in update.ContentUpdate)
             {
-
-                Console.Write(updatePart.Text);
-                string message = updatePart.Text;
-
-                await client.SendToGroupAsync(
-                    chat_group_id,
-                    new BinaryData(JsonSerializer.Serialize(new { messageId, message, from = "microservice", error = false })),
-                    WebPubSubDataType.Json,
-                    ackId: null,  // No need to specify ackId if you want to wait for acknowledgment
-                    noEcho: true, // Optional: Set noEcho to true if you don't want the message echoed back to sender
-                    fireAndForget: true, // Ensure fireAndForget is false to wait for acknowledgment
-                    CancellationToken.None
-                );
-
+                Console.WriteLine(updatePart.Text);
+                completeMessageContent += updatePart.Text;
             }
         }
+        // WebPubSubClient client = await EstablishWebSocket();
 
-        await client.StopAsync();
+        // await foreach (StreamingChatCompletionUpdate update in updates)
+        // {
+        //     foreach (ChatMessageContentPart updatePart in update.ContentUpdate)
+        //     {
+
+        //         Console.Write(updatePart.Text);
+        //         string message = updatePart.Text;
+
+        //         await client.SendToGroupAsync(
+        //             chat_group_id,
+        //             new BinaryData(JsonSerializer.Serialize(new { messageId, message, from = "microservice", error = false })),
+        //             WebPubSubDataType.Json,
+        //             ackId: null,  // No need to specify ackId if you want to wait for acknowledgment
+        //             noEcho: true, // Optional: Set noEcho to true if you don't want the message echoed back to sender
+        //             fireAndForget: true, // Ensure fireAndForget is false to wait for acknowledgment
+        //             CancellationToken.None
+        //         );
+
+        //     }
+        // }
+
+        // await client.StopAsync();
 
         // var response = await chatClient.CompleteChatAsync(messages, completionOptions);
-        return "asd";
+        return completeMessageContent;
         // return response.Value.Content[0].Text;
     }
 }
-

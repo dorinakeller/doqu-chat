@@ -2,6 +2,16 @@ using Microsoft.OpenApi.Models;
 using System.Text.Json;
 using DotNetEnv;
 using GenerativeAI;
+using System;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Text;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Collections.Generic;
 
 Env.Load(".env.local");
 
@@ -45,6 +55,36 @@ if (app.Environment.IsDevelopment())
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Chat MicroService API v1.0");
     });
 }
+
+app.MapGet("/fetchcontext", async (HttpContext context, IHttpClientFactory httpClientFactory) =>
+{
+    try
+    {
+        // Create an instance of HttpClientWrapper using the provided base URL and API key
+        var httpClientWrapper = new HttpClientWrapper(BackendUrl, apiKey: apiKey);
+
+        // Perform the health check request
+        var response = await httpClientWrapper.GetAsync("fetchcontext");
+
+        // Set the response status code and content type based on the response from the HttpClientWrapper
+        context.Response.StatusCode = response.StatusCode;
+        context.Response.ContentType = response.ContentType;
+
+        // Write the response content to the HTTP response
+        await context.Response.WriteAsync(response.Content);
+    }
+    catch (Exception ex)
+    {
+        // Set the response status code and content type for the error
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+
+        // Write the error message to the HTTP response
+        await context.Response.WriteAsync(JsonSerializer.Serialize("The following error occurred while processing your request. " + ex));
+    }
+}
+);
+
 app.MapGet("/health", async (HttpContext context, IHttpClientFactory httpClientFactory) =>
 {
     try
@@ -74,53 +114,190 @@ app.MapGet("/health", async (HttpContext context, IHttpClientFactory httpClientF
 }
 );
 
-
 app.MapPost("/invoke", async (HttpContext context, IHttpClientFactory httpClientFactory, ILogger<Program> logger) =>
+{
+    try
     {
-        try
+        using var reader = new StreamReader(context.Request.Body);
+        var requestBody = await reader.ReadToEndAsync();
+        var chatRequest = JsonSerializer.Deserialize<ChatRequest>(requestBody) ?? throw new Exception("Incoming body is null!");
+
+        if (string.IsNullOrWhiteSpace(chatRequest.ClientId) ||
+            string.IsNullOrWhiteSpace(chatRequest.ChatGroupId) ||
+            string.IsNullOrWhiteSpace(chatRequest.Message))
         {
-            using var reader = new StreamReader(context.Request.Body);
-            var requestBody = await reader.ReadToEndAsync();
-            var chatRequest = JsonSerializer.Deserialize<ChatRequest>(requestBody) ?? throw new Exception("Incoming body is null!");
-            if (string.IsNullOrWhiteSpace(chatRequest.client_id) || string.IsNullOrWhiteSpace(chatRequest.chat_group_id) || string.IsNullOrWhiteSpace(chatRequest.message))
+            throw new Exception("Incoming JSON key-value is null!");
+        }
+
+        var clientId = chatRequest.ClientId;
+        var chatGroupId = chatRequest.ChatGroupId;
+        var message = chatRequest.Message;
+
+        var url = $"{BackendUrl}/fetchcontext?clientId={clientId}&chatGroupId={chatGroupId}";
+
+        // Fetch context from backend
+        var client = httpClientFactory.CreateClient();
+        var fetchContextResponse = await client.GetAsync(url);
+        if (fetchContextResponse.IsSuccessStatusCode)
+        {
+            var responseContent = await fetchContextResponse.Content.ReadAsStringAsync();
+            Console.WriteLine("------------------------- ");
+            Console.WriteLine("Response Content: " + responseContent);
+
+            try
             {
-                throw new Exception("Incoming JSON key-value is null!");
+                var contextData = JsonSerializer.Deserialize<FetchContextResponse>(responseContent);
+
+                if (contextData == null)
+                {
+                    Console.WriteLine("contextData is null after deserialization.");
+                }
+                else
+                {
+                    // Log each property to verify deserialization
+                    Console.WriteLine("Deserialized contextData object:");
+                    Console.WriteLine("SystemPrompt: " + contextData.SystemPrompt);
+                    Console.WriteLine("ChatModel Deployment Name: " + contextData.ChatModel.DeploymentName);
+                    Console.WriteLine("ChatModel Endpoint: " + contextData.ChatModel.Endpoint);
+                    Console.WriteLine("ChatModel ApiVersion: " + contextData.ChatModel.ApiVersion);
+                    Console.WriteLine("ChatHistory count: " + contextData.ChatHistory.Count);
+
+                    int maxTokens = 4096;
+                    float temperature = 0.9f;
+                    float frequencyPenalty = 0.0f;
+                    float presencePenalty = 0.6f;
+
+                    // Create an instance of AzureOpenAIGPT
+                    var azureOpenAIGPT = new AzureOpenAIGPT(maxTokens, temperature, frequencyPenalty, presencePenalty);
+                    // Use the instance to chat
+                    string messageId = Guid.NewGuid().ToString();
+
+                    string response = await azureOpenAIGPT.Chat(messageId, message, chatGroupId, contextData);
+
+                    Console.WriteLine("Chat response: " + response);
+
+                    var body = CreateChatResponseBody(chatRequest.ClientId, chatRequest.Message, response);
+
+
+                    // Construct the endpoint URL
+                    var postUrl = $"{BackendUrl}/chat/{chatGroupId}/patch/";
+
+                    // Send POST request using HttpClient
+                    // var client = httpClientFactory.CreateClient();
+                    var content = JsonSerializer.Serialize(body);
+                    var stringContent = new StringContent(content, Encoding.UTF8, "application/json");
+                    var postResponse = await client.PatchAsync(postUrl, stringContent);
+
+                    if (postResponse.IsSuccessStatusCode)
+                    {
+                        Console.WriteLine("Successfully sent chat response to backend.");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Error sending chat response: " + postResponse.StatusCode);
+                    }
+                }
             }
-
-            var clientId = chatRequest.client_id;
-            var chatGroupId = chatRequest.chat_group_id;
-            var message = chatRequest.message;
-
-            int maxTokens = 4096;
-            float temperature = 0.9f;
-            float frequencyPenalty = 0.0f;
-            float presencePenalty = 0.6f;
-
-            // Create an instance of AzureOpenAIGPT
-            var azureOpenAIGPT = new AzureOpenAIGPT(maxTokens, temperature, frequencyPenalty, presencePenalty);
-
-            // Use the instance to chat
-            string messageId = Guid.NewGuid().ToString();
-
-            string response = await azureOpenAIGPT.Chat(messageId, message, chatGroupId);
-            context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsync(JsonSerializer.Serialize("Process finished"));
+            catch (JsonException jsonEx)
+            {
+                Console.WriteLine("JSON Deserialization Error: " + jsonEx.Message);
+            }
         }
-        catch (Exception ex)
+        else
         {
-            context.Response.StatusCode = 500;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = ex.Message }));
+            Console.WriteLine("Error fetching context: " + fetchContextResponse.StatusCode);
         }
+
+        context.Response.StatusCode = 200;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(JsonSerializer.Serialize("Process finished"));
     }
-);
+    catch (Exception ex)
+    {
+        Console.WriteLine("error: " + ex.Message);
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = ex.Message }));
+    }
+});
 
 app.Run();
-internal class ChatRequest
+
+Dictionary<string, object> CreateChatResponseBody(string clientId, string userMessage, string aiResponse)
+// Prepare the chat response body
 {
-    public string? client_id { get; set; }
-    public string? chat_group_id { get; set; }
-    public string? message { get; set; }
+    return new Dictionary<string, object>
+    {
+        { "data", new Dictionary<string, object>
+            {
+                { "chat_history", new List<Dictionary<string, string>>
+                    {
+                        new Dictionary<string, string> { { "sent_by", clientId }, { "message", userMessage }, { "messageId", null } },
+                        new Dictionary<string, string> { { "sent_by", "gpt4o@gpt.gpt" }, { "message", aiResponse }, { "messageId", null } }
+                    }
+                }
+            }
+        }
+    };
+
+
+            // Dictionary<string, List<Dictionary<string, string>>> body = new Dictionary<string, List<Dictionary<string, string>>>();
+            // List<Dictionary<string, string>> messages = new List<Dictionary<string, string>>();
+
+            // messages.Add(new Dictionary<string, string>() { { "user", chatRequest.ClientId }, { "message", chatRequest.Message } });
+            // messages.Add(new Dictionary<string, string>() { { "user", "gpt4o@gpt.gpt" }, { "message", response } });
+
+            // body.Add("data", messages);
 }
 
+
+public class ChatRequest
+{
+    [JsonPropertyName("client_id")]
+    public string? ClientId { get; set; }
+
+    [JsonPropertyName("chat_group_id")]
+    public string? ChatGroupId { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+}
+
+public class ChatHistory
+{
+    [JsonPropertyName("sent_by")]
+    public string SentBy { get; set; }
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; }
+
+    [JsonPropertyName("timestamp")]
+    public string Timestamp { get; set; }
+
+    [JsonPropertyName("messageId")]
+    public string MessageId { get; set; }
+}
+
+public class ChatModel
+{
+    [JsonPropertyName("deployment_name")]
+    public string DeploymentName { get; set; }
+
+    [JsonPropertyName("endpoint")]
+    public string Endpoint { get; set; }
+
+    [JsonPropertyName("api_version")]
+    public string ApiVersion { get; set; }
+}
+
+public class FetchContextResponse
+{
+    [JsonPropertyName("chat_history")]
+    public List<ChatHistory> ChatHistory { get; set; }
+
+    [JsonPropertyName("system_prompt")]
+    public string SystemPrompt { get; set; }
+
+    [JsonPropertyName("chat_model")]
+    public ChatModel ChatModel { get; set; }
+}
