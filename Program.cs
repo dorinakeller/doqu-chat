@@ -172,11 +172,13 @@ app.MapPost("/invoke", async (HttpContext context, IHttpClientFactory httpClient
                     // Use the instance to chat
                     string messageId = Guid.NewGuid().ToString();
 
-                    string response = await azureOpenAIGPT.Chat(messageId, message, chatGroupId, contextData);
+                    var chatResponse = await azureOpenAIGPT.Chat(messageId, message, chatGroupId, contextData);
 
-                    Console.WriteLine("Chat response: " + response);
+                    Console.WriteLine("Chat response: " + chatResponse.CompleteMessageContent);
+                    Console.WriteLine("Chat title: " + chatResponse.Title);
 
-                    var body = CreateChatResponseBody(chatRequest.ClientId, chatRequest.Message, response);
+                    var body = CreateChatResponseBody(chatRequest.ClientId, chatRequest.Message, chatResponse);
+
 
 
                     // Construct the endpoint URL
@@ -223,31 +225,29 @@ app.MapPost("/invoke", async (HttpContext context, IHttpClientFactory httpClient
 
 app.Run();
 
-Dictionary<string, object> CreateChatResponseBody(string clientId, string userMessage, string aiResponse)
+Dictionary<string, object> CreateChatResponseBody(string clientId, string userMessage, ChatResponse chatResponse)
 // Prepare the chat response body
 {
-    return new Dictionary<string, object>
+    var chatHistory = new List<Dictionary<string, string>>
     {
-        { "data", new Dictionary<string, object>
-            {
-                { "chat_history", new List<Dictionary<string, string>>
-                    {
-                        new Dictionary<string, string> { { "sent_by", clientId }, { "message", userMessage }, { "messageId", null } },
-                        new Dictionary<string, string> { { "sent_by", "gpt4o@gpt.gpt" }, { "message", aiResponse }, { "messageId", null } }
-                    }
-                }
-            }
-        }
+        new Dictionary<string, string> { { "sent_by", clientId }, { "message", userMessage }, { "messageId", null } },
+        new Dictionary<string, string> { { "sent_by", "gpt4o@gpt.gpt" }, { "message", chatResponse.CompleteMessageContent }, { "messageId", null } }
     };
 
+    var data = new Dictionary<string, object>
+    {
+        { "chat_history", chatHistory }
+    };
 
-            // Dictionary<string, List<Dictionary<string, string>>> body = new Dictionary<string, List<Dictionary<string, string>>>();
-            // List<Dictionary<string, string>> messages = new List<Dictionary<string, string>>();
+    if (!string.IsNullOrEmpty(chatResponse.Title))
+    {
+        data.Add("title", chatResponse.Title);
+    }
 
-            // messages.Add(new Dictionary<string, string>() { { "user", chatRequest.ClientId }, { "message", chatRequest.Message } });
-            // messages.Add(new Dictionary<string, string>() { { "user", "gpt4o@gpt.gpt" }, { "message", response } });
-
-            // body.Add("data", messages);
+    return new Dictionary<string, object>
+    {
+        { "data", data }
+    };
 }
 
 
@@ -300,4 +300,10 @@ public class FetchContextResponse
 
     [JsonPropertyName("chat_model")]
     public ChatModel ChatModel { get; set; }
+}
+
+public class ChatResponse
+{
+    public string CompleteMessageContent { get; set; }
+    public string Title { get; set; }
 }

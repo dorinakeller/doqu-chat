@@ -55,7 +55,7 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
 
     // }
 
-    public async Task<string> Chat(string messageId, string userMessage, string chat_group_id, FetchContextResponse contextData)
+    public async Task<ChatResponse> Chat(string messageId, string userMessage, string chatGroupId, FetchContextResponse contextData)
     {
         AzureOpenAIClient azureClient = new(
                     new Uri(contextData.ChatModel.Endpoint),
@@ -64,9 +64,24 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
         ChatClient chatClient = azureClient.GetChatClient(contextData.ChatModel.DeploymentName);
         var messages = new List<ChatMessage>
         {
-            new SystemChatMessage(contextData.SystemPrompt),
-            new UserChatMessage(userMessage)
+            new SystemChatMessage(contextData.SystemPrompt)
         };
+
+        // Add chat history to messages
+        foreach (var chatHistoryItem in contextData.ChatHistory)
+        {
+            if (chatHistoryItem.SentBy == "gpt4o@gpt.gpt")
+            {
+                messages.Add(new SystemChatMessage(chatHistoryItem.Message));
+            }
+            else
+            {
+                messages.Add(new UserChatMessage(chatHistoryItem.Message));
+            }
+        }
+
+        // Add the user's message
+        messages.Add(new UserChatMessage(userMessage));
 
         var completionOptions = new ChatCompletionOptions
         {
@@ -82,10 +97,12 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
         {
             foreach (ChatMessageContentPart updatePart in update.ContentUpdate)
             {
-                Console.WriteLine(updatePart.Text);
                 completeMessageContent += updatePart.Text;
             }
         }
+
+        
+
         // WebPubSubClient client = await EstablishWebSocket();
 
         // await foreach (StreamingChatCompletionUpdate update in updates)
@@ -111,8 +128,35 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
 
         // await client.StopAsync();
 
-        // var response = await chatClient.CompleteChatAsync(messages, completionOptions);
-        return completeMessageContent;
-        // return response.Value.Content[0].Text;
+        string title = null;
+
+        // Generate title only if chat history is empty
+        if (!contextData.ChatHistory.Any())
+        {
+            title = await GenerateTitle(userMessage, completeMessageContent, chatClient, completionOptions);
+        }
+
+        return new ChatResponse
+        {
+            CompleteMessageContent = completeMessageContent,
+            Title = title
+        };
+
     }
+    
+    private async Task<string> GenerateTitle(string userMessage, string completeMessageContent, ChatClient chatClient, ChatCompletionOptions completionOptions)
+    {
+        var messagesTitle = new List<ChatMessage>
+        {
+            new SystemChatMessage("Generate a title for the above conversation! Keep it simple and short, without emojis and formatting."),
+            new UserChatMessage(userMessage),
+            new SystemChatMessage(completeMessageContent)
+        };
+
+        var titleResponse = await chatClient.CompleteChatAsync(messagesTitle, completionOptions);
+        return titleResponse.Value.Content[0].Text;
+    }
+
 }
+
+
