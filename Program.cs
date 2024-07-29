@@ -133,6 +133,7 @@ app.MapPost("/invoke", async (HttpContext context, HttpClientWrapper httpClientW
                 Console.WriteLine("Chat title: " + chatResponse.Title);
 
                 // Send POST request using HttpClient
+                string messageId = Guid.NewGuid().ToString();
                 var serializedData = CreateChatResponseBody(chatRequest.ClientId, chatRequest.Message, chatResponse);
                 var postResponse = await httpClientWrapper.PatchAsync($"chat/{chatGroupId}/?request_type=title-history", serializedData);
                 // request type-ot a data-n belül küldömx
@@ -175,8 +176,8 @@ static StringContent CreateChatResponseBody(string clientId, string userMessage,
 {
     var dataChat = new List<Dictionary<string, string>>
     {
-        new() { { "sent_by", clientId }, { "message", userMessage }, { "messageId", "" } },
-        new() { { "sent_by", "gpt4o@gpt.gpt" }, { "message", chatResponse.CompleteMessageContent }, { "messageId", "" } }
+        new() { { "sent_by", clientId }, { "message", userMessage } },
+        new() { { "sent_by", "gpt4o@gpt.gpt" }, { "message", chatResponse.CompleteMessageContent } }
     };
 
     var data = new Dictionary<string, object>

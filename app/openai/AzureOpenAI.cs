@@ -137,7 +137,6 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
         {
             CompleteMessageContent = completeMessageContent,
             Title = title,
-            MessageId = messageId
         };
 
     }
