@@ -2,12 +2,14 @@ public class AppConfiguration
 {
     public string BackendUrl { get; }
     public string ApiKey { get; }
+    public string Email { get; }
 
     public AppConfiguration()
     {
         // Read and validate required environment variables
         BackendUrl = RequireEnvironmentVariable("BACKEND_URL", "Base URL must be provided.");
         ApiKey = RequireEnvironmentVariable("API_KEY", "API KEY must be provided.");
+        Email = RequireEnvironmentVariable("EMAIL", "EMAIL must be provided.");
     }
 
     private static string RequireEnvironmentVariable(string variableName, string errorMessage)

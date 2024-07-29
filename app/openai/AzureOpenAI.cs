@@ -3,6 +3,7 @@ using Azure;
 using Azure.AI.OpenAI;
 using Azure.Messaging.WebPubSub;
 using Azure.Messaging.WebPubSub.Clients;
+using ChatInterfaces;
 using OpenAI.Chat;
 using System.ClientModel;
 using System.Text.Json;
@@ -10,7 +11,7 @@ using Websocket.Client;
 
 namespace GenerativeAI;
 
-public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPenalty, float presencePenalty)
+public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPenalty, float presencePenalty, string chatGroupId)
 {
     private static readonly string Key = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY")
          ?? throw new InvalidOperationException("Environment variable AZURE_OPENAI_API_KEY is not set.");
@@ -28,34 +29,36 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
     private readonly float frequencyPenalty = frequencyPenalty;
     private readonly float presencePenalty = presencePenalty;
 
-    // public async Task<WebPubSubClient> EstablishWebSocket()
-    // {
-    //     var serviceClient = new WebPubSubServiceClient(WebPubSubEndpoint, WebPubSubHub);
+    private readonly string chatGroupId = chatGroupId;
 
-    //     DateTimeOffset expiration = DateTimeOffset.UtcNow.AddMinutes(5);
+    public async Task<WebPubSubClient> EstablishWebSocket(string chatGroupId)
+    {
+        var serviceClient = new WebPubSubServiceClient(WebPubSubEndpoint, WebPubSubHub);
 
-    //     var url = serviceClient.GetClientAccessUri(
-    //         expiresAt: expiration,
-    //         userId: "gpt_model",
-    //         roles: ["webpubsub.sendToGroup.chat", "webpubsub.joinLeaveGroup.chat"]
-    //     ).AbsoluteUri;
+        DateTimeOffset expiration = DateTimeOffset.UtcNow.AddMinutes(5);
 
-    //     var wsClient = new WebPubSubClient(new Uri(url));
-    //     try
-    //     {
-    //         await wsClient.StartAsync();
-    //         await wsClient.JoinGroupAsync("chat");
-    //         return wsClient;
-    //     }
-    //     catch (Exception ex)
-    //     {
-    //         Console.WriteLine($"Error establishing WebSocket connection: {ex.Message}");
-    //         throw;
-    //     }
+        var url = serviceClient.GetClientAccessUri(
+            expiresAt: expiration,
+            userId: "gpt_model",
+            roles: [$"webpubsub.sendToGroup.{chatGroupId}", $"webpubsub.joinLeaveGroup.{chatGroupId}"]
+        ).AbsoluteUri;
 
-    // }
+        var wsClient = new WebPubSubClient(new Uri(url));
+        try
+        {
+            await wsClient.StartAsync();
+            await wsClient.JoinGroupAsync(chatGroupId);
+            return wsClient;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error establishing WebSocket connection: {ex.Message}");
+            throw;
+        }
 
-    public async Task<ChatResponse> Chat(string messageId, string userMessage, string chatGroupId, FetchContextResponse contextData)
+    }
+
+    public async Task<ChatResponse> Chat(string userMessage, string chatGroupId, FetchContextResponse contextData)
     {
         AzureOpenAIClient azureClient = new(
                     new Uri(contextData.ChatModel.Endpoint),
@@ -92,43 +95,37 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
         };
 
         AsyncResultCollection<StreamingChatCompletionUpdate> updates = chatClient.CompleteChatStreamingAsync(messages, completionOptions);
+
+        WebPubSubClient client = await EstablishWebSocket(chatGroupId);
+
         string completeMessageContent = "";
+        string messageId = Guid.NewGuid().ToString();
+
         await foreach (StreamingChatCompletionUpdate update in updates)
         {
             foreach (ChatMessageContentPart updatePart in update.ContentUpdate)
             {
+
+                Console.Write(updatePart.Text);
                 completeMessageContent += updatePart.Text;
+                string message = updatePart.Text;
+
+                await client.SendToGroupAsync(
+                    chatGroupId,
+                    new BinaryData(JsonSerializer.Serialize(new { messageId, message, from = "microservice", error = false })),
+                    WebPubSubDataType.Json,
+                    ackId: null,  // No need to specify ackId if you want to wait for acknowledgment
+                    noEcho: true, // Optional: Set noEcho to true if you don't want the message echoed back to sender
+                    fireAndForget: true, // Ensure fireAndForget is false to wait for acknowledgment
+                    CancellationToken.None
+                );
+
             }
         }
 
-        
+        await client.StopAsync();
 
-        // WebPubSubClient client = await EstablishWebSocket();
-
-        // await foreach (StreamingChatCompletionUpdate update in updates)
-        // {
-        //     foreach (ChatMessageContentPart updatePart in update.ContentUpdate)
-        //     {
-
-        //         Console.Write(updatePart.Text);
-        //         string message = updatePart.Text;
-
-        //         await client.SendToGroupAsync(
-        //             chat_group_id,
-        //             new BinaryData(JsonSerializer.Serialize(new { messageId, message, from = "microservice", error = false })),
-        //             WebPubSubDataType.Json,
-        //             ackId: null,  // No need to specify ackId if you want to wait for acknowledgment
-        //             noEcho: true, // Optional: Set noEcho to true if you don't want the message echoed back to sender
-        //             fireAndForget: true, // Ensure fireAndForget is false to wait for acknowledgment
-        //             CancellationToken.None
-        //         );
-
-        //     }
-        // }
-
-        // await client.StopAsync();
-
-        string title = null;
+        string? title = null;
 
         // Generate title only if chat history is empty
         if (!contextData.ChatHistory.Any())
@@ -143,12 +140,12 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
         };
 
     }
-    
+
     private async Task<string> GenerateTitle(string userMessage, string completeMessageContent, ChatClient chatClient, ChatCompletionOptions completionOptions)
     {
         var messagesTitle = new List<ChatMessage>
         {
-            new SystemChatMessage("Generate a title for the above conversation! Keep it simple and short, without emojis and formatting."),
+            new SystemChatMessage("Generate a title for the above conversation! Keep it simple and very short, without emojis and formatting."),
             new UserChatMessage(userMessage),
             new SystemChatMessage(completeMessageContent)
         };
