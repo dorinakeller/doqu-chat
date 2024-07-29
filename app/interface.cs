@@ -57,6 +57,7 @@ namespace ChatInterfaces
     public class ChatResponse
     {
         public required string CompleteMessageContent { get; set; }
-        public required string Title { get; set; }
+        public required string? Title { get; set; }
+        public required string MessageId { get; set; }
     }
 }

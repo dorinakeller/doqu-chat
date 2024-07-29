@@ -136,7 +136,8 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
         return new ChatResponse
         {
             CompleteMessageContent = completeMessageContent,
-            Title = title
+            Title = title,
+            MessageId = messageId
         };
 
     }
