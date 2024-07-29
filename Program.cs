@@ -135,11 +135,11 @@ app.MapPost("/invoke", async (HttpContext context, HttpClientWrapper httpClientW
                 // Send POST request using HttpClient
                 string messageId = Guid.NewGuid().ToString();
                 var serializedData = CreateChatResponseBody(chatRequest.ClientId, chatRequest.Message, chatResponse);
-                var postResponse = await httpClientWrapper.PatchAsync($"chat/{chatGroupId}/?request_type=title-history", serializedData);
+                var postResponse = await httpClientWrapper.PatchAsync($"chat/{chatGroupId}/", serializedData);
                 // request type-ot a data-n belül küldömx
 
 
-                if (postResponse.StatusCode != 200)
+                if (postResponse.StatusCode != 204)
                 {
                     throw new Exception($"Error sending chat response: {postResponse.StatusCode}");
                 }
@@ -182,8 +182,9 @@ static StringContent CreateChatResponseBody(string clientId, string userMessage,
 
     var data = new Dictionary<string, object>
     {
-        { "data", dataChat }
+        { "chat_history", dataChat },
     };
+    data.Add("request_type", "title-history");
 
     if (!string.IsNullOrEmpty(chatResponse.Title))
     {
