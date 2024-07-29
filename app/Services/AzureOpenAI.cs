@@ -3,62 +3,28 @@ using Azure;
 using Azure.AI.OpenAI;
 using Azure.Messaging.WebPubSub;
 using Azure.Messaging.WebPubSub.Clients;
-using ChatInterfaces;
+
 using OpenAI.Chat;
+using Request.DTOs;
+using Response.DTOs;
 using System.ClientModel;
 using System.Text.Json;
-using Websocket.Client;
 
 namespace GenerativeAI;
 
-public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPenalty, float presencePenalty, string chatGroupId)
+public class AzureOpenAIGPT(FetchContextDTO contextData, string chatGroupId) : IAzureOpenAIGPT
 {
     private static readonly string Key = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY")
          ?? throw new InvalidOperationException("Environment variable AZURE_OPENAI_API_KEY is not set.");
-    private static readonly string Endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT")
-        ?? throw new InvalidOperationException("Environment variable AZURE_OPENAI_ENDPOINT is not set.");
-    private static readonly string DeploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME")
-        ?? throw new InvalidOperationException("Environment variable AZURE_OPENAI_DEPLOYMENT_NAME is not set.");
     private static readonly string WebPubSubEndpoint = Environment.GetEnvironmentVariable("AZURE_WEB_PUBSUB_ENDPOINT")
-    ?? throw new InvalidOperationException("Environment variable AZURE_WEB_PUBSUB_ENDPOINT is not set.");
+        ?? throw new InvalidOperationException("Environment variable AZURE_WEB_PUBSUB_ENDPOINT is not set.");
     private static readonly string WebPubSubHub = Environment.GetEnvironmentVariable("AZURE_WEB_PUBSUB_HUB")
-    ?? throw new InvalidOperationException("Environment variable AZURE_WEB_PUBSUB_HUB is not set.");
+        ?? throw new InvalidOperationException("Environment variable AZURE_WEB_PUBSUB_HUB is not set.");
 
-    private readonly int maxTokens = maxTokens;
-    private readonly float temperature = temperature;
-    private readonly float frequencyPenalty = frequencyPenalty;
-    private readonly float presencePenalty = presencePenalty;
 
     private readonly string chatGroupId = chatGroupId;
 
-    public async Task<WebPubSubClient> EstablishWebSocket(string chatGroupId)
-    {
-        var serviceClient = new WebPubSubServiceClient(WebPubSubEndpoint, WebPubSubHub);
-
-        DateTimeOffset expiration = DateTimeOffset.UtcNow.AddMinutes(5);
-
-        var url = serviceClient.GetClientAccessUri(
-            expiresAt: expiration,
-            userId: "gpt_model",
-            roles: [$"webpubsub.sendToGroup.{chatGroupId}", $"webpubsub.joinLeaveGroup.{chatGroupId}"]
-        ).AbsoluteUri;
-
-        var wsClient = new WebPubSubClient(new Uri(url));
-        try
-        {
-            await wsClient.StartAsync();
-            await wsClient.JoinGroupAsync(chatGroupId);
-            return wsClient;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error establishing WebSocket connection: {ex.Message}");
-            throw;
-        }
-
-    }
-
-    public async Task<ChatResponse> Chat(string userMessage, string chatGroupId, FetchContextResponse contextData)
+    public async Task<ChatResponseDTO> Chat(string userMessage)
     {
         AzureOpenAIClient azureClient = new(
                     new Uri(contextData.ChatModel.Endpoint),
@@ -88,10 +54,10 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
 
         var completionOptions = new ChatCompletionOptions
         {
-            MaxTokens = maxTokens,
-            Temperature = temperature,
-            FrequencyPenalty = frequencyPenalty,
-            PresencePenalty = presencePenalty,
+            MaxTokens = contextData.ChatModel.max_tokens,
+            Temperature = contextData.ChatModel.temperature,
+            FrequencyPenalty = contextData.ChatModel.frequency_penalty,
+            PresencePenalty = contextData.ChatModel.presence_penalty,
         };
 
         AsyncResultCollection<StreamingChatCompletionUpdate> updates = chatClient.CompleteChatStreamingAsync(messages, completionOptions);
@@ -133,15 +99,42 @@ public class AzureOpenAIGPT(int maxTokens, float temperature, float frequencyPen
             title = await GenerateTitle(userMessage, completeMessageContent, chatClient, completionOptions);
         }
 
-        return new ChatResponse
+        return new ChatResponseDTO
         {
             CompleteMessageContent = completeMessageContent,
             Title = title,
         };
 
     }
+    public async Task<WebPubSubClient> EstablishWebSocket(string chatGroupId)
+    {
+        var serviceClient = new WebPubSubServiceClient(WebPubSubEndpoint, WebPubSubHub);
 
-    private async Task<string> GenerateTitle(string userMessage, string completeMessageContent, ChatClient chatClient, ChatCompletionOptions completionOptions)
+        DateTimeOffset expiration = DateTimeOffset.UtcNow.AddMinutes(5);
+
+        var url = serviceClient.GetClientAccessUri(
+            expiresAt: expiration,
+            userId: "gpt_model",
+            roles: [$"webpubsub.sendToGroup.{chatGroupId}", $"webpubsub.joinLeaveGroup.{chatGroupId}"]
+        ).AbsoluteUri;
+
+        var wsClient = new WebPubSubClient(new Uri(url));
+        try
+        {
+            await wsClient.StartAsync();
+            await wsClient.JoinGroupAsync(chatGroupId);
+            return wsClient;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error establishing WebSocket connection: {ex.Message}");
+            throw;
+        }
+
+    }
+
+
+    public async Task<string> GenerateTitle(string userMessage, string completeMessageContent, ChatClient chatClient, ChatCompletionOptions completionOptions)
     {
         var messagesTitle = new List<ChatMessage>
         {
