@@ -13,7 +13,6 @@ namespace Microservice.Endpoints
                 try
                 {
                     var (clientId, chatGroupId, message) = (chatRequest.ClientId, chatRequest.ChatGroupId, chatRequest.Message);
-                    Console.WriteLine($"ClientId: {clientId}, ChatGroupId: {chatGroupId}, Message: {message}");
 
                     var fetchContextResponse = await httpClientWrapper.GetAsync($"chat/{chatGroupId}/?request_type=microservice-data");
                     if (fetchContextResponse.StatusCode != 200)
@@ -24,7 +23,6 @@ namespace Microservice.Endpoints
 
                     var azureOpenAIGPT = new AzureOpenAIGPT(contextData, chatGroupId);
                     var chatResponse = await azureOpenAIGPT.Chat(message);
-                    Console.WriteLine($"Chat response: {chatResponse.CompleteMessageContent}, Title: {chatResponse.Title}");
 
                     var serializedData = ChatService.CreateChatResponseBody(clientId, message, chatResponse);
                     var postResponse = await httpClientWrapper.PatchAsync($"chat/{chatGroupId}/", serializedData);

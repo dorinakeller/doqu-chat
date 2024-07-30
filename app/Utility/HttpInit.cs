@@ -27,9 +27,6 @@ public class HttpClientWrapper
     public async Task<HttpResponseResult> GetAsync(string relativeUrl)
     {
         var httpClient = _httpClientFactory.CreateClient();
-        Console.WriteLine("Chat _baseUrl: " + _baseUrl);
-        Console.WriteLine("Chat relativeUrl: " + relativeUrl);
-        Console.WriteLine("Chat url: " + CombineUrl(_baseUrl, relativeUrl));
         var request = new HttpRequestMessage(HttpMethod.Get, CombineUrl(_baseUrl, relativeUrl));
         AddAuthorizationHeader(request);
 

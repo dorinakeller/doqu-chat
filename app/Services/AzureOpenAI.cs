@@ -71,8 +71,6 @@ public class AzureOpenAIGPT(FetchContextDTO contextData, string chatGroupId) : I
         {
             foreach (ChatMessageContentPart updatePart in update.ContentUpdate)
             {
-
-                Console.Write(updatePart.Text);
                 completeMessageContent += updatePart.Text;
                 string message = updatePart.Text;
 
@@ -94,7 +92,7 @@ public class AzureOpenAIGPT(FetchContextDTO contextData, string chatGroupId) : I
         string? title = null;
 
         // Generate title only if chat history is empty
-        if (!contextData.ChatHistory.Any())
+        if (contextData.ChatHistory.Count == 0 || contextData.ChatHistory.Count % 8 == 0)
         {
             title = await GenerateTitle(userMessage, completeMessageContent, chatClient, completionOptions);
         }
@@ -127,8 +125,7 @@ public class AzureOpenAIGPT(FetchContextDTO contextData, string chatGroupId) : I
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error establishing WebSocket connection: {ex.Message}");
-            throw;
+            throw new Exception($"Error establishing WebSocket connection: {ex.Message}");
         }
 
     }
@@ -138,9 +135,9 @@ public class AzureOpenAIGPT(FetchContextDTO contextData, string chatGroupId) : I
     {
         var messagesTitle = new List<ChatMessage>
         {
-            new SystemChatMessage("Generate a title for the above conversation! Keep it simple and very short, without emojis and formatting."),
             new UserChatMessage(userMessage),
-            new SystemChatMessage(completeMessageContent)
+            new SystemChatMessage(completeMessageContent),
+            new SystemChatMessage("Generate a title for the above conversation, which summarize the previous conversation so far! Keep it concise and less than 255 characters long, without emojis and formatting."),
         };
 
         var titleResponse = await chatClient.CompleteChatAsync(messagesTitle, completionOptions);
