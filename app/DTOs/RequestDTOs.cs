@@ -7,9 +7,6 @@ namespace Request.DTOs
     public class ChatRequestDTO
 
     {
-        [JsonPropertyName("clientId")]
-        public required string ClientId { get; set; }
-
         [JsonPropertyName("chatGroupId")]
         public required string ChatGroupId { get; set; }
 

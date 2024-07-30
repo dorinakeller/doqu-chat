@@ -13,7 +13,7 @@ namespace Microservice.Endpoints
                 try
                 {
                     // Request body extraction
-                    var (clientId, chatGroupId, message) = (chatRequest.ClientId, chatRequest.ChatGroupId, chatRequest.Message);
+                    var (chatGroupId, message) = (chatRequest.ChatGroupId, chatRequest.Message);
 
                     // Fetch chat context data from the backend
                     var fetchContextResponse = await httpClientWrapper.GetAsync($"chat/{chatGroupId}/?request_type=microservice-data");
