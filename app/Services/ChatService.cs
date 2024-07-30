@@ -4,13 +4,13 @@ using Response.DTOs;
 
 public static class ChatService
 {
-    public static StringContent CreateChatResponseBody(string clientId, string userMessage, ChatResponseDTO chatResponse)
+    public static StringContent CreateChatResponseBody(string clientId, string systemId, string userMessage, ChatResponseDTO chatResponse)
     {
         // Prepare the chat response body
         var dataChat = new List<Dictionary<string, string>>
         {
             new() { { "sent_by", clientId }, { "message", userMessage } },
-            new() { { "sent_by", "gpt4o@gpt.gpt" }, { "message", chatResponse.CompleteMessageContent } }
+            new() { { "sent_by", systemId }, { "message", chatResponse.CompleteMessageContent } }
         };
 
         var data = new Dictionary<string, object>

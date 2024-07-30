@@ -76,7 +76,7 @@ public class AzureOpenAIGPT(FetchContextDTO contextData, string chatGroupId) : I
 
                 await client.SendToGroupAsync(
                     chatGroupId,
-                    new BinaryData(JsonSerializer.Serialize(new { messageId, message, from = "microservice", error = false })),
+                    new BinaryData(JsonSerializer.Serialize(new { messageId, message, sent_by = contextData.serviceId, error = false })),
                     WebPubSubDataType.Json,
                     ackId: null,  // No need to specify ackId if you want to wait for acknowledgment
                     noEcho: true, // Optional: Set noEcho to true if you don't want the message echoed back to sender
@@ -137,7 +137,7 @@ public class AzureOpenAIGPT(FetchContextDTO contextData, string chatGroupId) : I
         {
             new UserChatMessage(userMessage),
             new SystemChatMessage(completeMessageContent),
-            new SystemChatMessage("Generate a title for the above conversation, which summarize the previous conversation so far! Keep it concise and less than 255 characters long, without emojis and formatting."),
+            new SystemChatMessage("Generate a title for the above conversation, which summarize the previous conversation so far! Keep it concise and less than 5 words long, without emojis and formatting and quotes."),
         };
 
         var titleResponse = await chatClient.CompleteChatAsync(messagesTitle, completionOptions);
