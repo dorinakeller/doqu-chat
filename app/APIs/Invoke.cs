@@ -12,23 +12,27 @@ namespace Microservice.Endpoints
             {
                 try
                 {
+                    // Request body extraction
                     var (clientId, chatGroupId, message) = (chatRequest.ClientId, chatRequest.ChatGroupId, chatRequest.Message);
 
+                    // Fetch chat context data from the backend
                     var fetchContextResponse = await httpClientWrapper.GetAsync($"chat/{chatGroupId}/?request_type=microservice-data");
                     if (fetchContextResponse.StatusCode != 200)
                         throw new Exception($"Error fetching context: {fetchContextResponse.StatusCode}");
 
+                    // Serialize GET data
                     var contextData = JsonSerializer.Deserialize<FetchContextDTO>(fetchContextResponse.Content)
                         ?? throw new Exception("Incoming body is null!");
 
+                    // Call Azure OpenAI and stream data
                     var azureOpenAIGPT = new AzureOpenAIGPT(contextData, chatGroupId);
                     var chatResponse = await azureOpenAIGPT.Chat(message);
 
+                    // PATCH backend chathistory with the new message-answer pair
                     var serializedData = ChatService.CreateChatResponseBody(clientId, message, chatResponse);
-                    var postResponse = await httpClientWrapper.PatchAsync($"chat/{chatGroupId}/", serializedData);
-
-                    if (postResponse.StatusCode != 204)
-                        throw new Exception($"Error sending chat response: {postResponse.StatusCode}");
+                    var patchResponse = await httpClientWrapper.PatchAsync($"chat/{chatGroupId}/", serializedData);
+                    if (patchResponse.StatusCode != 204)
+                        throw new Exception($"Error sending chat response: {patchResponse.StatusCode}");
 
                     return Results.Ok();
                 }
