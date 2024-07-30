@@ -29,7 +29,7 @@ namespace Microservice.Endpoints
                     var chatResponse = await azureOpenAIGPT.Chat(message);
 
                     // PATCH backend chathistory with the new message-answer pair
-                    var serializedData = ChatService.CreateChatResponseBody(clientId, message, chatResponse);
+                    var serializedData = ChatService.CreateChatResponseBody(contextData.serviceId, message, chatResponse);
                     var patchResponse = await httpClientWrapper.PatchAsync($"chat/{chatGroupId}/", serializedData);
                     if (patchResponse.StatusCode != 204)
                         throw new Exception($"Error sending chat response: {patchResponse.StatusCode}");
