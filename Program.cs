@@ -14,6 +14,8 @@ var app = builder.Build();
 // Enable CORS
 app.UseCors("AllowLocalhost3000");
 
+app.UseMiddleware<ApiKeyMiddleware>();
+
 // Configure Swagger for API documentation
 app.ConfigureSwagger();
 

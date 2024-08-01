@@ -3,6 +3,7 @@ public class AppConfiguration
     public string BackendUrl { get; }
     public string ApiKey { get; }
     public string Email { get; }
+    public string FrontendApiKey { get; }
 
     public AppConfiguration()
     {
@@ -10,6 +11,7 @@ public class AppConfiguration
         BackendUrl = RequireEnvironmentVariable("BACKEND_URL", "Base URL must be provided.");
         ApiKey = RequireEnvironmentVariable("API_KEY", "API KEY must be provided.");
         Email = RequireEnvironmentVariable("EMAIL", "EMAIL must be provided.");
+        FrontendApiKey = RequireEnvironmentVariable("FRONTEND_API_KEY", "FRONTEND API KEY must be provided."); 
     }
 
     private static string RequireEnvironmentVariable(string variableName, string errorMessage)
